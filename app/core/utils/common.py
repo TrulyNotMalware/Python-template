@@ -1,19 +1,20 @@
 import abc
 import logging
-from typing import TypeVar, Any, Union, Type, Literal, Tuple, Generic, Optional, List
+from typing import Any, Generic, Literal, TypeVar, Union
 
+from sqlalchemy import Result, Select, and_, select
 from sqlalchemy.ext.asyncio import async_scoped_session
 from sqlalchemy.inspection import Inspectable, inspect
 from sqlalchemy.sql import roles
 from sqlalchemy.sql._typing import _HasClauseElement
-from sqlalchemy import Select, and_, select, Result
 
 from app.core.db import Base
 
 logger = logging.getLogger(__name__)
 
+
 class Singleton(type):
-    _instances = dict()
+    _instances = {}
     """
     Return a object that can be used as a singleton
     """
@@ -33,22 +34,27 @@ _T = TypeVar("_T", bound=Any)  # Type variable.
 _O = TypeVar("_O", bound=object)  # Object Type
 T = TypeVar("T", bound=Base)
 
-_PKIdentityArgument = Union[Any, Tuple[Any, ...]]
-_EntityBindKey = Union[Type[_O], "Mapper[_O]"]
+_PKIdentityArgument = Union[Any, tuple[Any, ...]]
+_EntityBindKey = Union[type[_O], "Mapper[_O]"]
 _ColumnsClauseArgument = Union[
     roles.TypedColumnsClauseRole[_T],
     roles.ColumnsClauseRole,
     "SQLCoreOperations[_T]",
     Literal["*", 1],
-    Type[_T],
+    type[_T],
     Inspectable[_HasClauseElement],
     _HasClauseElement,
 ]
 
 
 class Pageable:
-    def __init__(self, sort: str, size: int, page: int,
-                 sort_option: str = "DESC",):
+    def __init__(
+        self,
+        sort: str,
+        size: int,
+        page: int,
+        sort_option: str = "DESC",
+    ):
         self.sort = sort
         self.sort_option = sort_option
         self.size = size
@@ -57,15 +63,15 @@ class Pageable:
 
 class GenericRepository(Generic[T], abc.ABC):
     @abc.abstractmethod
-    async def find_by_id(self, id: _PKIdentityArgument) -> Optional[T]:
+    async def find_by_id(self, id: _PKIdentityArgument) -> T | None:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def find_by(self, **filters) -> List[T]:
+    async def find_by(self, **filters) -> list[T]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def find_all(self, pageable: Pageable = None) -> List[T]:
+    async def find_all(self, pageable: Pageable = None) -> list[T]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -86,7 +92,7 @@ class GenericRepository(Generic[T], abc.ABC):
 
 
 class SQLRepository(GenericRepository[T], abc.ABC):
-    def __init__(self, session: async_scoped_session, entity: Type[T]):
+    def __init__(self, session: async_scoped_session, entity: type[T]):
         self._session: async_scoped_session = session
         self._entity = entity
 
@@ -94,7 +100,7 @@ class SQLRepository(GenericRepository[T], abc.ABC):
         inspector = inspect(self._entity)
         return select(self._entity).where(inspector.primary_key[0] == id)
 
-    async def find_by_id(self, id: _PKIdentityArgument) -> Optional[T]:
+    async def find_by_id(self, id: _PKIdentityArgument) -> T | None:
         result: Result[Any] = await self._session.execute(self.__find_by_id(id=id))
         return result.scalars().first()
 
@@ -102,7 +108,6 @@ class SQLRepository(GenericRepository[T], abc.ABC):
         base = select(self._entity)
         where_case = list()
         for key, value in filters.items():
-
             if not hasattr(self._entity, key):
                 raise ValueError(f"Invalid Column name {key}.")
             where_case.append(getattr(self._entity, key) == value)
@@ -112,11 +117,11 @@ class SQLRepository(GenericRepository[T], abc.ABC):
         elif len(where_case) > 1:
             return base.where(and_(*where_case))
 
-    async def find_by(self, **filters) -> List[T]:
+    async def find_by(self, **filters) -> list[T]:
         result: Result[Any] = await self._session.execute(self.__find_many(**filters))
         return result.all()
 
-    async def find_all(self, pageable: Pageable = None) -> List[T]:
+    async def find_all(self, pageable: Pageable = None) -> list[T]:
         result: Result[Any] = await self._session.execute(select(self._entity))
         return result.scalars().all()
 

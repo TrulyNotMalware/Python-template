@@ -1,5 +1,4 @@
 import abc
-from typing import List
 
 
 class ErrorCode(abc.ABC):
@@ -13,7 +12,7 @@ class ErrorCode(abc.ABC):
 
 
 class ArgumentError:
-    def __init__(self, field_name: str, value: str, reason: str):
+    def __init__(self, field_name: str, value: str, reason: str) -> None:
         self.__field_name = field_name
         self.__value = value
         self.__reason = reason
@@ -29,7 +28,9 @@ class ArgumentError:
 
 
 class CustomException(Exception):
-    def __init__(self, error_code: ErrorCode, argument_errors: List[ArgumentError] = None):
+    def __init__(
+        self, error_code: ErrorCode, argument_errors: list[ArgumentError] = None
+    ) -> None:
         self.code: int = error_code.get_status_code()
         self.message: str = error_code.get_message()
         if argument_errors is None:

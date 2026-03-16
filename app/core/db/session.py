@@ -1,14 +1,13 @@
 from contextvars import ContextVar, Token
-from typing import Union
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
-    create_async_engine,
     async_scoped_session,
+    create_async_engine,
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.sql.expression import Update, Delete, Insert
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.sql.expression import Delete, Insert, Update
 
 from app.core.config.config import loader
 
@@ -33,7 +32,7 @@ engines = {
 }
 
 
-async def init_tables():
+async def init_tables() -> None:
     engine = engines.get("writer")
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
@@ -51,7 +50,7 @@ async_session_factory = sessionmaker(
     class_=AsyncSession,
     sync_session_class=RoutingSession,
 )
-session: Union[AsyncSession, async_scoped_session] = async_scoped_session(
+session: AsyncSession | async_scoped_session = async_scoped_session(
     session_factory=async_session_factory,
     scopefunc=get_session_context,
 )

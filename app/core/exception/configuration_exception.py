@@ -1,17 +1,18 @@
-from abc import ABC
 from enum import Enum
 from http import HTTPStatus
-from typing import List
 
-from app.core.exception.error_base import ErrorCode, ArgumentError, CustomException
+from app.core.exception.error_base import ArgumentError, CustomException, ErrorCode
 
 
 class ConfigurationEnum(Enum):
-    NOT_A_VALID_CONFIGURATION_NAME: tuple = (HTTPStatus.NOT_FOUND, "Configuration not found.")
+    NOT_A_VALID_CONFIGURATION_NAME: tuple = (
+        HTTPStatus.NOT_FOUND,
+        "Configuration not found.",
+    )
 
 
 class ConfigurationError(ErrorCode):
-    def __init__(self, error: ConfigurationEnum):
+    def __init__(self, error: ConfigurationEnum) -> None:
         self.__value = error.value
         self.__http_status_code: HTTPStatus = self.__value[0]
         self.__message = self.__value[1]
@@ -24,5 +25,7 @@ class ConfigurationError(ErrorCode):
 
 
 class ConfigurationException(CustomException):
-    def __init__(self, error_code: ErrorCode, argument_errors: List[ArgumentError] = None):
+    def __init__(
+        self, error_code: ErrorCode, argument_errors: list[ArgumentError] = None
+    ) -> None:
         super().__init__(error_code=error_code, argument_errors=argument_errors)

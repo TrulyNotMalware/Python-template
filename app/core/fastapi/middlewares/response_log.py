@@ -35,3 +35,4 @@ class ResponseLogMiddleware:
             await send(message)
 
         await self.app(scope, receive, _logging_send)
+        return None

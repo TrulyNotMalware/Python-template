@@ -2,12 +2,12 @@ import os
 
 from pydantic.v1 import BaseSettings
 
-from app.core.exception.configuration_exception import ConfigurationException, ConfigurationError, ConfigurationEnum
-from app.core.exception.error_base import ErrorCode, ArgumentError
-
-"""
-Default app server configuration
-"""
+from app.core.exception.configuration_exception import (
+    ConfigurationEnum,
+    ConfigurationError,
+    ConfigurationException,
+)
+from app.core.exception.error_base import ArgumentError, ErrorCode
 
 
 class LocalConfig(BaseSettings):
@@ -42,29 +42,28 @@ class ProdConfig(LocalConfig):
 
 
 class ConfigLoader:
-
     def __init__(self, env: str):
         self.env = env
         self.config = self.__get_config()
 
-    def refresh(self):
-        self.env = os.environ.get("ENV")
-        self.config = self.__get_config()
+    # def refresh(self):
+    #     self.env = os.environ.get("ENV")
+    #     self.config = self.__get_config()
 
     def __get_config(self):
-        configs = {
-            "local": LocalConfig(),
-            "dev": DevConfig(),
-            "prod": ProdConfig()
-        }
+        configs = {"local": LocalConfig(), "dev": DevConfig(), "prod": ProdConfig()}
         if configs.get(self.env) is None:
-            error_code: ErrorCode = ConfigurationError(error=ConfigurationEnum.NOT_A_VALID_CONFIGURATION_NAME)
+            error_code: ErrorCode = ConfigurationError(
+                error=ConfigurationEnum.NOT_A_VALID_CONFIGURATION_NAME
+            )
             argument_error: ArgumentError = ArgumentError(
                 field_name="env",
                 value=self.env,
-                reason=f"env type {self.env} is not supported"
+                reason=f"env type {self.env} is not supported",
             )
-            raise ConfigurationException(error_code=error_code, argument_errors=[argument_error])
+            raise ConfigurationException(
+                error_code=error_code, argument_errors=[argument_error]
+            )
         else:
             return configs[self.env]
 

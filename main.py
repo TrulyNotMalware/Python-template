@@ -24,7 +24,6 @@ Reference FastAPI Boilerplate from https://github.com/teamhide/fastapi-boilerpla
 def main(env: str, debug: bool):
     os.environ["ENV"] = env
     os.environ["DEBUG"] = str(debug)
-    loader.refresh()
     uvicorn.run(
         app="app.server:app",
         host=loader.config.APP_HOST,

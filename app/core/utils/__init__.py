@@ -1,3 +1,3 @@
-from .common import Singleton
+from .common import GenericRepository, Singleton, SQLRepository
 
-__all__ = ["Singleton"]
+__all__ = ["Singleton", "SQLRepository", "GenericRepository"]

@@ -1,4 +1,5 @@
 import abc
+import enum
 import logging
 from typing import Any, Literal, TypeVar
 
@@ -46,14 +47,25 @@ _ColumnsClauseArgument = (
 )
 
 
+class SortOption(enum.StrEnum):
+    ASC = "ASC"
+    DESC = "DESC"
+
+
 class Pageable:
     def __init__(
         self,
         sort: str,
         size: int,
         page: int,
-        sort_option: str = "DESC",
+        sort_option: SortOption = SortOption.DESC,
     ) -> None:
+        if page < 1:
+            raise ValueError("page must be greater than 0.")
+        if size < 1:
+            raise ValueError("size must be greater than 0.")
+        if sort_option not in ("ASC", "DESC"):
+            raise ValueError("sort option must be ASC or DESC.")
         self.sort = sort
         self.sort_option = sort_option
         self.size = size
@@ -88,7 +100,7 @@ class GenericRepository[T: Base](abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def delete_by_id(self, entity: T) -> None:
+    async def delete_by_id(self, pk: _PKIdentityArgument) -> None:
         raise NotImplementedError
 
 
@@ -123,7 +135,19 @@ class SQLRepository[T: Base](GenericRepository[T], abc.ABC):
         return list(result.scalars().all())
 
     async def find_all(self, pageable: Pageable | None = None) -> list[T]:
-        result: Result[Any] = await self._session.execute(select(self._entity))
+        query = select(self._entity)
+        if pageable is not None:
+            column = getattr(self._entity, pageable.sort, None)
+            if column is None:
+                raise ValueError(f"Invalid sort column: {pageable.sort}")
+
+            order = column.desc() if pageable.sort_option == "DESC" else column.asc()
+            query = query.order_by(order)
+
+            offset = (pageable.page - 1) * pageable.size
+            query = query.offset(offset).limit(pageable.size)
+
+        result: Result[Any] = await self._session.execute(query)
         return list(result.scalars().all())
 
     async def save(self, entity: T) -> T:

@@ -5,7 +5,7 @@ from app.core.exception.error_base import ArgumentError, CustomException, ErrorC
 
 
 class ConfigurationEnum(Enum):
-    NOT_A_VALID_CONFIGURATION_NAME: tuple = (
+    NOT_A_VALID_CONFIGURATION_NAME = (
         HTTPStatus.NOT_FOUND,
         "Configuration not found.",
     )

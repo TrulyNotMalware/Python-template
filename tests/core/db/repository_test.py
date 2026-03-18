@@ -1,28 +1,30 @@
-import unittest
-from typing import List
+import pytest
 
-from app.core.config.config import LocalConfig
-from app.core.db import session
-from app.core.db.session import init_tables
-from app.user.model.user import UserRepository, User
+from app.user.model.user import User, UserRepository
 
 
-class RepositoryTest(unittest.IsolatedAsyncioTestCase):
+@pytest.fixture
+def repository() -> UserRepository:
+    return UserRepository()
 
-    async def asyncSetUp(self):
-        self.config = LocalConfig()# Test in local
-        self.session = session
-        self.repository = UserRepository()
-        await init_tables()
 
-        self.test_user = User(password="<PASSWORD>", email="<EMAIL>", nickname="test_user")
-        self.test_user2 = User(password="<PASSWORD2>", email="<EMAIL2>", nickname="test_user2")
-        self.test_user2 = User(password="<PASSWORD3>", email="<EMAIL3", nickname="test_user3")
+@pytest.fixture
+async def test_user(repository: UserRepository) -> User:
+    user = User(password="<PASSWORD>", email="<EMAIL>", nickname="test_user")
+    return await repository.save(entity=user)
 
-        await self.repository.save(entity=self.test_user)
-        await self.repository.save(entity=self.test_user2)
 
-    async def test_repository_works_successfully(self):
-        await self.repository.save(entity=self.test_user)
-        users: List[User] = await self.repository.find_by(nickname="test_user")
-        user: User = users.pop()
+@pytest.mark.asyncio
+async def test_find_by_nickname(repository: UserRepository, test_user: User) -> None:
+    users: list[User] = await repository.find_by(nickname="test_user")
+    assert len(users) > 0
+    user: User = users.pop()
+    assert user.nickname == "test_user"
+
+
+@pytest.mark.asyncio
+async def test_save_user(repository: UserRepository) -> None:
+    user = User(password="<PASSWORD>", email="<EMAIL_NEW>", nickname="new_user")
+    saved: User = await repository.save(entity=user)
+    assert saved.email == "<EMAIL_NEW>"
+    assert saved.nickname == "new_user"

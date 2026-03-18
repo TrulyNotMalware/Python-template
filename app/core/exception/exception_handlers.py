@@ -1,4 +1,3 @@
-from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from app.core.exception.error_base import CustomException
@@ -8,8 +7,8 @@ from app.core.exception.error_base import CustomException
 """
 
 
-async def custom_exception_handler(request: Request, exc: CustomException):
+async def custom_exception_handler(exc: CustomException) -> JSONResponse:
     return JSONResponse(
         status_code=exc.code,
-        content={"message": exc.message, "detail": exc.argument_errors}
+        content={"message": exc.message, "detail": exc.argument_errors},
     )

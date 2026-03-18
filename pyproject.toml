@@ -18,9 +18,9 @@ select = [
 ]
 
 ignore = [
-    "ANN101",
-    "ANN102",
+    "ANN401",
     "S101",
+    "N818"
 ]
 
 [tool.ruff.format]
@@ -44,3 +44,14 @@ ignore_missing_imports = true
 init_forbid_extra = true
 init_typed = true
 warn_required_dynamic_aliases = true
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S105",
+    "S106",
+    "ANN",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

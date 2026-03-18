@@ -29,10 +29,10 @@ class ArgumentError:
 
 class CustomException(Exception):
     def __init__(
-        self, error_code: ErrorCode, argument_errors: list[ArgumentError] = None
+        self,
+        error_code: ErrorCode,
+        argument_errors: list[ArgumentError] | None = None,
     ) -> None:
         self.code: int = error_code.get_status_code()
         self.message: str = error_code.get_message()
-        if argument_errors is None:
-            argument_errors = []
-        self.argument_errors = argument_errors
+        self.argument_errors: list[ArgumentError] = argument_errors or []

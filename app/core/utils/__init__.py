@@ -1,3 +1,3 @@
 from .common import Singleton
 
-__all__ = ['Singleton']
+__all__ = ["Singleton"]

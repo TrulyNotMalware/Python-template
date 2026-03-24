@@ -11,13 +11,12 @@ class Transactional:
     ) -> Callable[P, Awaitable[T]]:
         @wraps(func)
         async def _transactional(*args: P.args, **kwargs: P.kwargs) -> T:
-            try:
-                result = await func(*args, **kwargs)
-                await session.commit()
-            except Exception as e:
-                await session.rollback()
-                raise e
+            if (
+                session.in_transaction()
+            ):  # FIXME: session.in_transaction not in type stub
+                return await func(*args, **kwargs)
 
-            return result
+            async with session.begin():
+                return await func(*args, **kwargs)
 
         return _transactional

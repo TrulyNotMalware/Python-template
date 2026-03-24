@@ -1,3 +1,3 @@
-from .common import GenericRepository, Singleton, SQLRepository
+from app.core.utils.common import Singleton
 
-__all__ = ["Singleton", "SQLRepository", "GenericRepository"]
+__all__ = ["Singleton"]

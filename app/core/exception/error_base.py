@@ -33,6 +33,7 @@ class CustomException(Exception):
         error_code: ErrorCode,
         argument_errors: list[ArgumentError] | None = None,
     ) -> None:
+        super().__init__(error_code.get_message())
         self.code: int = error_code.get_status_code()
         self.message: str = error_code.get_message()
         self.argument_errors: list[ArgumentError] = argument_errors or []

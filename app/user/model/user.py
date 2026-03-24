@@ -1,7 +1,6 @@
 from sqlalchemy import Boolean, Column, Integer, Unicode
 
-from app.core.db import Base, session
-from app.core.utils import SQLRepository
+from app.core.db import Base, SQLRepository, session
 
 
 class User(Base):

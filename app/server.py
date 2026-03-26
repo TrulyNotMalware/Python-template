@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -6,6 +7,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 
 from api.root_router import root_router
+from app.core.cache.idempotency_cache import cache_manager
 from app.core.config.config import loader
 from app.core.db.session import init_engines, init_tables
 from app.core.exception.error_base import CustomException
@@ -42,7 +44,9 @@ def init_middleware() -> list[Middleware]:
 async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
     init_engines(database_url=loader.config.DATABASE_URL)
     await init_tables()
+    task = asyncio.create_task(cache_manager.evict_loop())
     yield
+    task.cancel()
 
 
 def init_app() -> FastAPI:

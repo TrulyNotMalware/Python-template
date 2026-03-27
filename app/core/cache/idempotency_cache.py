@@ -4,17 +4,14 @@ import hashlib
 import json
 import time
 from collections.abc import Callable
-from enum import Enum
 from typing import Any
 
 from fastapi import HTTPException
 from pydantic import BaseModel
+from starlette.status import HTTP_409_CONFLICT
 
+from app.core.cache.protocol import CacheStatus
 from app.core.utils import Singleton
-
-
-class CacheStatus(Enum):
-    PROCESSING = "PROCESSING"
 
 
 class AsyncIdempotencyCache(metaclass=Singleton):
@@ -27,7 +24,10 @@ class AsyncIdempotencyCache(metaclass=Singleton):
     async def process(self, key: str, func: Callable) -> Any:
         cached = await self.get(key)
         if cached == CacheStatus.PROCESSING:
-            raise HTTPException(status_code=409, detail="Already processing")
+            raise HTTPException(
+                status_code=HTTP_409_CONFLICT,
+                detail=f"Already Processing idempotency key: {key}",
+            )
         if cached is not None:
             return cached
 

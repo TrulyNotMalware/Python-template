@@ -4,11 +4,17 @@ import hashlib
 import json
 import time
 from collections.abc import Callable
+from enum import Enum
 from typing import Any
 
+from fastapi import HTTPException
 from pydantic import BaseModel
 
 from app.core.utils import Singleton
+
+
+class CacheStatus(Enum):
+    PROCESSING = "PROCESSING"
 
 
 class AsyncIdempotencyCache(metaclass=Singleton):
@@ -17,6 +23,22 @@ class AsyncIdempotencyCache(metaclass=Singleton):
         self.lock = asyncio.Lock()
         self._ttl = ttl
         self._cleanup_interval = cleanup_interval
+
+    async def process(self, key: str, func: Callable) -> Any:
+        cached = await self.get(key)
+        if cached == CacheStatus.PROCESSING:
+            raise HTTPException(status_code=409, detail="Already processing")
+        if cached is not None:
+            return cached
+
+        await self.set(key, CacheStatus.PROCESSING)
+        try:
+            result = await func()
+            await self.set(key, result)
+            return result
+        except Exception:
+            await self.delete(key)
+            raise
 
     async def get(self, key: str) -> Any | None:
         async with self.lock:
@@ -32,6 +54,10 @@ class AsyncIdempotencyCache(metaclass=Singleton):
     async def set(self, key: str, result: Any) -> None:
         async with self.lock:
             self._cache[key] = (result, time.monotonic() + self._ttl)
+
+    async def delete(self, key: str) -> None:
+        async with self.lock:
+            self._cache.pop(key, None)
 
     async def evict_loop(self) -> None:
         while True:

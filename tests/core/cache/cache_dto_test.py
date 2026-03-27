@@ -28,7 +28,6 @@ class TestQueryIdempotencyDto:
         assert generate_idempotency_key(dto1) != generate_idempotency_key(dto2)
 
     def test_param_order_does_not_matter(self):
-        """params 딕셔너리 순서가 달라도 동일한 키"""
         dto1 = QueryIdempotencyDto(
             endpoint="/users", params={"status": "active", "page": 1}
         )

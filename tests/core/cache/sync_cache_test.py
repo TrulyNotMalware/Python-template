@@ -59,7 +59,7 @@ class TestSyncIdempotencyCache:
         assert cache.get("key1") is None
 
     def test_delete_missing_key_no_error(self, cache):
-        cache.delete("nonexistent")  # 예외 없이 통과
+        cache.delete("nonexistent")
 
     def test_evict_expired(self, cache):
         base = time.monotonic()

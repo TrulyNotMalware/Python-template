@@ -57,7 +57,7 @@ class TestSyncIdempotencyCacheProcess:
         def failing_func():
             raise ValueError("실패")
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="실패"):
             cache.process("key1", failing_func)
 
         assert cache.get("key1") is None
@@ -92,7 +92,7 @@ class TestSyncIdempotencyCacheProcess:
         results = []
 
         def func():
-            time.sleep(0.1)  # 처리 시간 시뮬레이션
+            time.sleep(0.1)
             return {"status": "ok"}
 
         def request():

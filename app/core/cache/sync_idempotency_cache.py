@@ -61,3 +61,18 @@ class SyncIdempotencyCache(metaclass=Singleton):
             expired = [k for k, (_, exp) in self._cache.items() if now > exp]
             for k in expired:
                 del self._cache[k]
+
+
+"""
+Usage
+
+def _sync_evict_loop():
+    while True:
+        time.sleep(sync_cache_manager._cleanup_interval)
+        sync_cache_manager.evict_expired()
+        
+@asynccontextmanager
+async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
+    threading.Thread(target=_sync_evict_loop, daemon=True).start()
+    yield
+"""

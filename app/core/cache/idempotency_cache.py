@@ -1,7 +1,9 @@
 import asyncio
+import functools
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel
@@ -12,12 +14,12 @@ from app.core.utils import Singleton
 class AsyncIdempotencyCache(metaclass=Singleton):
     def __init__(self, ttl: float = 10.0, cleanup_interval: float = 30.0) -> None:
         self._cache: dict = {}
-        self._lock = asyncio.Lock()
+        self.lock = asyncio.Lock()
         self._ttl = ttl
         self._cleanup_interval = cleanup_interval
 
     async def get(self, key: str) -> Any | None:
-        async with self._lock:
+        async with self.lock:
             entry = self._cache.get(key)
             if entry is None:
                 return None
@@ -28,13 +30,13 @@ class AsyncIdempotencyCache(metaclass=Singleton):
             return result
 
     async def set(self, key: str, result: Any) -> None:
-        async with self._lock:
+        async with self.lock:
             self._cache[key] = (result, time.monotonic() + self._ttl)
 
     async def evict_loop(self) -> None:
         while True:
             await asyncio.sleep(self._cleanup_interval)
-            async with self._lock:
+            async with self.lock:
                 now = time.monotonic()
                 expired = [k for k, (_, exp) in self._cache.items() if now > exp]
                 for k in expired:
@@ -44,11 +46,41 @@ class AsyncIdempotencyCache(metaclass=Singleton):
 cache_manager = AsyncIdempotencyCache(ttl=10.0, cleanup_interval=30.0)
 
 
-def generate_idempotency_key(dto: BaseModel, exclude: set[str] = None) -> str:
+def generate_idempotency_key(
+    dto: BaseModel,
+    exclude: set[str] = None,
+    extra: dict[str, Any] = None,
+) -> str:
+    data = dto.model_dump(exclude=exclude)
+    if extra:
+        data.update(extra)
     payload = json.dumps(
-        dto.model_dump(exclude=exclude),
+        data,
         sort_keys=True,
         ensure_ascii=False,
         separators=(",", ":"),
     )
     return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def idempotent(exclude: set[str] = None) -> Callable[[Callable], Callable]:
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            dto = next((v for v in kwargs.values() if isinstance(v, BaseModel)), None)
+            if dto is None:
+                return await func(*args, **kwargs)
+
+            key = generate_idempotency_key(dto, exclude=exclude)
+
+            cached = await cache_manager.get(key)
+            if cached is not None:
+                return cached
+
+            result = await func(*args, **kwargs)
+            await cache_manager.set(key, result)
+            return result
+
+        return wrapper
+
+    return decorator

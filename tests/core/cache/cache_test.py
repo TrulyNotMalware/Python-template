@@ -14,10 +14,10 @@ MODULE = "time.monotonic"
 
 
 @pytest.fixture
-def cache():
+def cache() -> AsyncIdempotencyCache:  # Singleton class
     instance = AsyncIdempotencyCache.__new__(AsyncIdempotencyCache)
     instance._cache = {}
-    instance._lock = asyncio.Lock()
+    instance.lock = asyncio.Lock()
     instance._ttl = 1.0
     instance._cleanup_interval = 60.0
     return instance
@@ -94,8 +94,8 @@ class TestAsyncIdempotencyCache:
         assert results == list(range(50))
 
 
-async def _run_single_evict(cache):
-    async with cache._lock:
+async def _run_single_evict(cache: AsyncIdempotencyCache):
+    async with cache.lock:
         now = time.monotonic()
         expired = [k for k, (_, exp) in cache._cache.items() if now > exp]
         for k in expired:
@@ -130,3 +130,58 @@ class TestGenerateIdempotencyKey:
         key = generate_idempotency_key(dto)
         assert len(key) == 64
         assert all(c in "0123456789abcdef" for c in key)
+
+    def test_extra_same_value_same_key(self):
+        dto = SampleDto(amount=1000, to="alice")
+        key1 = generate_idempotency_key(dto, extra={"user_id": 123})
+        key2 = generate_idempotency_key(dto, extra={"user_id": 123})
+        assert key1 == key2
+
+    def test_extra_different_value_different_key(self):
+        dto = SampleDto(amount=1000, to="alice")
+        key1 = generate_idempotency_key(dto, extra={"user_id": 123})
+        key2 = generate_idempotency_key(dto, extra={"user_id": 456})
+        assert key1 != key2
+
+    def test_extra_changes_key_from_no_extra(self):
+        dto = SampleDto(amount=1000, to="alice")
+        key1 = generate_idempotency_key(dto)
+        key2 = generate_idempotency_key(dto, extra={"user_id": 123})
+        assert key1 != key2
+
+    def test_extra_none_equals_no_extra(self):
+        dto = SampleDto(amount=1000, to="alice")
+        key1 = generate_idempotency_key(dto, extra=None)
+        key2 = generate_idempotency_key(dto)
+        assert key1 == key2
+
+    def test_extra_multiple_fields(self):
+        dto = SampleDto(amount=1000, to="alice")
+        key1 = generate_idempotency_key(dto, extra={"user_id": 123, "tenant_id": "A"})
+        key2 = generate_idempotency_key(dto, extra={"user_id": 123, "tenant_id": "A"})
+        assert key1 == key2
+
+    def test_extra_multiple_fields_different_value(self):
+        dto = SampleDto(amount=1000, to="alice")
+        key1 = generate_idempotency_key(dto, extra={"user_id": 123, "tenant_id": "A"})
+        key2 = generate_idempotency_key(dto, extra={"user_id": 123, "tenant_id": "B"})
+        assert key1 != key2
+
+    def test_extra_key_order_does_not_matter(self):
+        """extra 딕셔너리 키 순서가 달라도 동일한 키 생성 (sort_keys=True)"""
+        dto = SampleDto(amount=1000, to="alice")
+        key1 = generate_idempotency_key(dto, extra={"user_id": 123, "tenant_id": "A"})
+        key2 = generate_idempotency_key(dto, extra={"tenant_id": "A", "user_id": 123})
+        assert key1 == key2
+
+    def test_extra_with_exclude(self):
+        """exclude + extra 조합"""
+        r1 = SampleDto(amount=1000, to="alice", currency="KRW")
+        r2 = SampleDto(amount=1000, to="alice", currency="USD")  # currency 다름
+        key1 = generate_idempotency_key(
+            r1, exclude={"currency"}, extra={"user_id": 123}
+        )
+        key2 = generate_idempotency_key(
+            r2, exclude={"currency"}, extra={"user_id": 123}
+        )
+        assert key1 == key2  # currency 제외했으므로 동일

@@ -168,20 +168,18 @@ class TestGenerateIdempotencyKey:
         assert key1 != key2
 
     def test_extra_key_order_does_not_matter(self):
-        """extra 딕셔너리 키 순서가 달라도 동일한 키 생성 (sort_keys=True)"""
         dto = SampleDto(amount=1000, to="alice")
         key1 = generate_idempotency_key(dto, extra={"user_id": 123, "tenant_id": "A"})
         key2 = generate_idempotency_key(dto, extra={"tenant_id": "A", "user_id": 123})
         assert key1 == key2
 
     def test_extra_with_exclude(self):
-        """exclude + extra 조합"""
         r1 = SampleDto(amount=1000, to="alice", currency="KRW")
-        r2 = SampleDto(amount=1000, to="alice", currency="USD")  # currency 다름
+        r2 = SampleDto(amount=1000, to="alice", currency="USD")
         key1 = generate_idempotency_key(
             r1, exclude={"currency"}, extra={"user_id": 123}
         )
         key2 = generate_idempotency_key(
             r2, exclude={"currency"}, extra={"user_id": 123}
         )
-        assert key1 == key2  # currency 제외했으므로 동일
+        assert key1 == key2

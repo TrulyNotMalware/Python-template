@@ -84,3 +84,10 @@ def idempotent(exclude: set[str] = None) -> Callable[[Callable], Callable]:
         return wrapper
 
     return decorator
+
+
+class QueryIdempotencyDto(BaseModel):
+    endpoint: str
+    params: dict = {}
+
+    model_config = {"frozen": True}

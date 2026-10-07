@@ -1,14 +1,11 @@
 import abc
 import enum
-import logging
+from dataclasses import dataclass
 from typing import Any
 
-from app.core.db import Base
+from app.core.db.session import Base
 
-logger = logging.getLogger(__name__)
-
-
-_PKIdentityArgument = Any | tuple[Any, ...]
+type PrimaryKey = Any | tuple[Any, ...]
 
 
 class SortOption(enum.StrEnum):
@@ -16,29 +13,25 @@ class SortOption(enum.StrEnum):
     DESC = "DESC"
 
 
+@dataclass(frozen=True, slots=True)
 class Pageable:
-    def __init__(
-        self,
-        sort: str,
-        size: int,
-        page: int,
-        sort_option: SortOption = SortOption.DESC,
-    ) -> None:
-        if page < 1:
+    sort: str
+    size: int
+    page: int
+    sort_option: SortOption = SortOption.DESC
+
+    def __post_init__(self) -> None:
+        if self.page < 1:
             raise ValueError("page must be greater than 0.")
-        if size < 1:
+        if self.size < 1:
             raise ValueError("size must be greater than 0.")
-        if sort_option not in ("ASC", "DESC"):
-            raise ValueError("sort option must be ASC or DESC.")
-        self.sort = sort
-        self.sort_option = sort_option
-        self.size = size
-        self.page = page
+        if not isinstance(self.sort_option, SortOption):
+            raise TypeError("sort_option must be a SortOption.")
 
 
 class GenericRepository[T: Base](abc.ABC):
     @abc.abstractmethod
-    async def find_by_pk(self, pk: _PKIdentityArgument) -> T | None:
+    async def find_by_pk(self, pk: PrimaryKey) -> T | None:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -58,11 +51,9 @@ class GenericRepository[T: Base](abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def update_from(
-        self, pk: _PKIdentityArgument, dto: Any, exclude: list[str]
-    ) -> T:
+    async def update_from(self, pk: PrimaryKey, dto: object, exclude: list[str]) -> T:
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def delete_by_id(self, pk: _PKIdentityArgument) -> None:
+    async def delete_by_id(self, pk: PrimaryKey) -> None:
         raise NotImplementedError

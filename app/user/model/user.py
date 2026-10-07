@@ -1,16 +1,18 @@
-from sqlalchemy import Boolean, Column, Integer, Unicode
+from sqlalchemy import Unicode
+from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.db import Base, SQLRepository, session
+from app.core.db import Base, SQLRepository
+from app.core.db.session import session
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    password = Column(Unicode(255), nullable=False)
-    email = Column(Unicode(255), nullable=False, unique=True)
-    nickname = Column(Unicode(255), nullable=False, unique=True)
-    is_admin = Column(Boolean, default=False)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    password: Mapped[str] = mapped_column(Unicode(255))
+    email: Mapped[str] = mapped_column(Unicode(255), unique=True)
+    nickname: Mapped[str] = mapped_column(Unicode(255), unique=True)
+    is_admin: Mapped[bool] = mapped_column(default=False)
 
 
 class UserRepository(SQLRepository[User]):

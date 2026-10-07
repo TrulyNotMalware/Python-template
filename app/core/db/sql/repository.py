@@ -1,115 +1,125 @@
 import abc
-from typing import Any, Literal, TypeVar
+from typing import Any, override
 
-from sqlalchemy import Result, Select, and_, select
-from sqlalchemy.ext.asyncio import async_scoped_session
-from sqlalchemy.inspection import Inspectable, inspect
-from sqlalchemy.orm import Mapper
-from sqlalchemy.sql import roles
-from sqlalchemy.sql._typing import _HasClauseElement
-from sqlalchemy.sql.elements import SQLCoreOperations
+from pydantic import BaseModel
+from sqlalchemy import ColumnElement, Select, and_, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_scoped_session
+from sqlalchemy.inspection import inspect
 
-from app.core.db import Base
-from app.core.db.protocol import GenericRepository, Pageable, _PKIdentityArgument
-
-_T = TypeVar("_T")
-_O = TypeVar("_O", bound=object)
-T = TypeVar("T", bound=Base)
-
-
-_EntityBindKey = type[_O] | Mapper[_O]
-_ColumnsClauseArgument = (
-    roles.TypedColumnsClauseRole[_T]
-    | roles.ColumnsClauseRole
-    | SQLCoreOperations[_T]
-    | Literal["*", 1]
-    | type[_T]
-    | Inspectable[_HasClauseElement]
-    | _HasClauseElement
-)
+from app.core.db.protocol import GenericRepository, Pageable, PrimaryKey, SortOption
+from app.core.db.session import Base
 
 
 class SQLRepository[T: Base](GenericRepository[T], abc.ABC):
-    def __init__(self, session: async_scoped_session[Any], entity: type[T]) -> None:
+    """Repository over the context-scoped session. It flushes and never commits."""
+
+    def __init__(
+        self, session: async_scoped_session[AsyncSession], entity: type[T]
+    ) -> None:
         self._session = session
         self._entity = entity
 
-    def __find_by_pk(self, pk: _PKIdentityArgument) -> Select[Any]:
+    def __find_by_pk(self, pk: PrimaryKey) -> Select[T]:
         inspector = inspect(self._entity)
         return select(self._entity).where(inspector.primary_key[0] == pk)
 
-    async def find_by_pk(self, pk: _PKIdentityArgument) -> T | None:
-        result: Result[Any] = await self._session.execute(self.__find_by_pk(pk=pk))
+    @override
+    async def find_by_pk(self, pk: PrimaryKey) -> T | None:
+        result = await self._session.execute(self.__find_by_pk(pk=pk))
         return result.scalars().first()
 
-    def __find_many(self, **filters: Any) -> Select[Any]:
+    def __find_many(self, **filters: Any) -> Select[T]:
         base = select(self._entity)
-        where_case = []
+        columns = inspect(self._entity).column_attrs
+        where_case: list[ColumnElement[bool]] = []
         for key, value in filters.items():
-            if not hasattr(self._entity, key):
+            if key not in columns:
                 raise ValueError(f"Invalid Column name {key}.")
-            where_case.append(getattr(self._entity, key) == value)
+            where_case.append(columns[key].class_attribute == value)
         if not where_case:
             return base
         if len(where_case) == 1:
             return base.where(where_case[0])
         return base.where(and_(*where_case))
 
+    @override
     async def find_by(self, **filters: Any) -> list[T]:
-        result: Result[Any] = await self._session.execute(self.__find_many(**filters))
+        result = await self._session.execute(self.__find_many(**filters))
         return list(result.scalars().all())
 
+    @override
     async def find_all(self, pageable: Pageable | None = None) -> list[T]:
         query = select(self._entity)
         if pageable is not None:
-            column = getattr(self._entity, pageable.sort, None)
-            if column is None:
+            columns = inspect(self._entity).column_attrs
+            if pageable.sort not in columns:
                 raise ValueError(f"Invalid sort column: {pageable.sort}")
+            column = columns[pageable.sort].class_attribute
 
-            order = column.desc() if pageable.sort_option == "DESC" else column.asc()
+            if pageable.sort_option is SortOption.DESC:
+                order = column.desc()
+            else:
+                order = column.asc()
             query = query.order_by(order)
 
             offset = (pageable.page - 1) * pageable.size
             query = query.offset(offset).limit(pageable.size)
 
-        result: Result[Any] = await self._session.execute(query)
+        result = await self._session.execute(query)
         return list(result.scalars().all())
 
+    @override
     async def save(self, entity: T) -> T:
         self._session.add(entity)
         await self._session.flush()
         await self._session.refresh(entity)
         return entity
 
-    async def update(self, record: T) -> T:
-        self._session.add(record)
+    @override
+    async def update(self, entity: T) -> T:
+        self._session.add(entity)
         await self._session.flush()
-        await self._session.refresh(record)
-        return record
+        await self._session.refresh(entity)
+        return entity
 
-    async def delete_by_id(self, pk: _PKIdentityArgument) -> None:
+    @override
+    async def delete_by_id(self, pk: PrimaryKey) -> None:
         record = await self.find_by_pk(pk=pk)
         if record is not None:
             await self._session.delete(record)
             await self._session.flush()
 
-    async def update_from(
-        self, pk: _PKIdentityArgument, dto: Any, exclude: list[str]
-    ) -> T:
+    @override
+    async def update_from(self, pk: PrimaryKey, dto: object, exclude: list[str]) -> T:
+        """Copy column values from ``dto`` onto the entity with primary key ``pk``.
+
+        A Pydantic model contributes only the fields that were set, so an explicit
+        ``None`` clears a column and an omitted field is left alone. Any other
+        object contributes every matching attribute that is not ``None``.
+        Primary key columns and the names in ``exclude`` are never changed.
+        """
         exclude_set: set[str] = set(exclude)
         entity: T | None = await self.find_by_pk(pk=pk)
         if entity is None:
             raise ValueError(f"Entity {pk} not found")
 
         mapper = inspect(self._entity)
-        pk_columns = {col.name for col in mapper.primary_key}
+        pk_keys = {mapper.get_property_by_column(col).key for col in mapper.primary_key}
+        keys = [
+            attr.key
+            for attr in mapper.column_attrs
+            if attr.key not in pk_keys and attr.key not in exclude_set
+        ]
 
-        for attr in mapper.attrs:
-            col_name = attr.key
-            if col_name in pk_columns or col_name in exclude_set:
-                continue
-            set_value = getattr(dto, col_name, None)
-            if set_value is not None:
-                setattr(entity, col_name, set_value)
+        if isinstance(dto, BaseModel):
+            changes = dto.model_dump(exclude_unset=True, exclude=exclude_set)
+            for key in keys:
+                if key in changes:
+                    setattr(entity, key, changes[key])
+        else:
+            for key in keys:
+                value = getattr(dto, key, None)
+                if value is not None:
+                    setattr(entity, key, value)
 
-        return await self.update(record=entity)
+        return await self.update(entity=entity)

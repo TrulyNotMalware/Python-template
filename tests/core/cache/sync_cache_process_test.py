@@ -1,4 +1,7 @@
+import functools
+import sys
 import threading
+from collections import Counter
 
 import pytest
 from fastapi import HTTPException
@@ -7,109 +10,145 @@ from app.core.cache.protocol import CacheStatus
 from app.core.cache.sync_idempotency_cache import SyncIdempotencyCache
 
 
-@pytest.fixture
-def cache():
-    instance = SyncIdempotencyCache.__new__(SyncIdempotencyCache)
-    instance._cache = {}
-    instance.lock = threading.Lock()
-    instance._ttl = 1.0
-    instance._cleanup_interval = 60.0
-    return instance
-
-
 class TestSyncIdempotencyCacheProcess:
-    def test_process_cache_miss_executes_func(self, cache):
-        result = cache.process("key1", lambda: {"status": "ok"})
+    def test_process_cache_miss_executes_func(
+        self, sync_cache: SyncIdempotencyCache
+    ) -> None:
+        result = sync_cache.process("key1", lambda: {"status": "ok"})
         assert result == {"status": "ok"}
 
-    def test_process_stores_result(self, cache):
-        cache.process("key1", lambda: {"status": "ok"})
-        assert cache.get("key1") == {"status": "ok"}
+    def test_process_stores_result(self, sync_cache: SyncIdempotencyCache) -> None:
+        sync_cache.process("key1", lambda: {"status": "ok"})
+        assert sync_cache.get("key1") == {"status": "ok"}
 
-    def test_process_cache_hit_returns_cached(self, cache):
-        cache.set("key1", {"status": "cached"})
+    def test_process_cache_hit_returns_cached(
+        self, sync_cache: SyncIdempotencyCache
+    ) -> None:
+        sync_cache.set("key1", {"status": "cached"})
 
         called = False
 
-        def func():
+        def func() -> dict[str, str]:
             nonlocal called
             called = True
             return {"status": "new"}
 
-        result = cache.process("key1", func)
+        result = sync_cache.process("key1", func)
         assert result == {"status": "cached"}
         assert called is False
 
-    def test_process_cache_hit_does_not_store(self, cache):
-        cache.set("key1", {"status": "cached"})
-        cache.process("key1", lambda: {"status": "new"})
-        assert cache.get("key1") == {"status": "cached"}
+    def test_process_cache_hit_does_not_store(
+        self, sync_cache: SyncIdempotencyCache
+    ) -> None:
+        sync_cache.set("key1", {"status": "cached"})
+        sync_cache.process("key1", lambda: {"status": "new"})
+        assert sync_cache.get("key1") == {"status": "cached"}
 
-    def test_process_processing_raises_409(self, cache):
-        cache.set("key1", CacheStatus.PROCESSING)
+    def test_process_processing_raises_409(
+        self, sync_cache: SyncIdempotencyCache
+    ) -> None:
+        sync_cache.set("key1", CacheStatus.PROCESSING)
 
         with pytest.raises(HTTPException) as exc:
-            cache.process("key1", lambda: {"status": "ok"})
+            sync_cache.process("key1", lambda: {"status": "ok"})
         assert exc.value.status_code == 409
 
-    def test_process_func_exception_deletes_key(self, cache):
+    def test_process_func_exception_deletes_key(
+        self, sync_cache: SyncIdempotencyCache
+    ) -> None:
 
-        def failing_func():
+        def failing_func() -> None:
             raise ValueError("실패")
 
         with pytest.raises(ValueError, match="실패"):
-            cache.process("key1", failing_func)
+            sync_cache.process("key1", failing_func)
 
-        assert cache.get("key1") is None
+        assert sync_cache.get("key1") is None
 
-    def test_process_func_exception_reraises(self, cache):
-        def failing_func():
+    def test_process_func_exception_reraises(
+        self, sync_cache: SyncIdempotencyCache
+    ) -> None:
+        def failing_func() -> None:
             raise ValueError("실패")
 
         with pytest.raises(ValueError, match="실패"):
-            cache.process("key1", failing_func)
+            sync_cache.process("key1", failing_func)
 
-    def test_process_sets_processing_before_func(self, cache):
+    def test_process_sets_processing_before_func(
+        self, sync_cache: SyncIdempotencyCache
+    ) -> None:
         processing_status = None
 
-        def func():
+        def func() -> dict[str, str]:
             nonlocal processing_status
-            processing_status = cache.get("key1")
+            processing_status = sync_cache.get("key1")
             return {"status": "ok"}
 
-        cache.process("key1", func)
+        sync_cache.process("key1", func)
         assert processing_status == CacheStatus.PROCESSING
 
-    def test_process_overwrites_processing_with_result(self, cache):
-        cache.process("key1", lambda: {"status": "ok"})
-        cached = cache.get("key1")
+    def test_process_overwrites_processing_with_result(
+        self, sync_cache: SyncIdempotencyCache
+    ) -> None:
+        sync_cache.process("key1", lambda: {"status": "ok"})
+        cached = sync_cache.get("key1")
         assert cached != CacheStatus.PROCESSING
         assert cached == {"status": "ok"}
 
-    def test_process_concurrent_requests(self, cache):
-        import time
+    def test_process_none_result_is_not_rerun(
+        self, sync_cache: SyncIdempotencyCache
+    ) -> None:
+        calls = 0
 
-        results = []
+        def func() -> None:
+            nonlocal calls
+            calls += 1
 
-        def func():
-            time.sleep(0.1)
-            return {"status": "ok"}
+        assert sync_cache.process("key1", func) is None
+        assert sync_cache.process("key1", func) is None
+        assert calls == 1
 
-        def request():
-            try:
-                result = cache.process("key1", func)
-                results.append(("ok", result))
-            except HTTPException as e:
-                results.append(("409", e.status_code))
+    def test_process_simultaneous_start_runs_func_once_per_key(
+        self, sync_cache: SyncIdempotencyCache
+    ) -> None:
+        thread_count = 8
+        rounds = 500
+        barrier = threading.Barrier(thread_count, timeout=10)
+        calls: Counter[str] = Counter()
+        calls_lock = threading.Lock()
+        unexpected: list[BaseException] = []
 
-        threads = [threading.Thread(target=request) for _ in range(5)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        def run(key: str) -> str:
+            with calls_lock:
+                calls[key] += 1
+            return key
 
-        ok_count = sum(1 for status, _ in results if status == "ok")
-        conflict_count = sum(1 for status, _ in results if status == "409")
+        def worker() -> None:
+            for round_no in range(rounds):
+                key = f"key{round_no}"
+                barrier.wait()
+                try:
+                    sync_cache.process(key, functools.partial(run, key))
+                except HTTPException as exc:
+                    if exc.status_code != 409:
+                        unexpected.append(exc)
+                except BaseException as exc:
+                    unexpected.append(exc)
+                    barrier.abort()
+                    return
 
-        assert ok_count == 1
-        assert conflict_count == 4
+        # A tiny switch interval makes the GIL hand over between the lookup and the
+        # PROCESSING write; without it the check-then-set race almost never shows.
+        switch_interval = sys.getswitchinterval()
+        sys.setswitchinterval(1e-6)
+        try:
+            threads = [threading.Thread(target=worker) for _ in range(thread_count)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        finally:
+            sys.setswitchinterval(switch_interval)
+
+        assert unexpected == []
+        assert calls == Counter({f"key{i}": 1 for i in range(rounds)})

@@ -1,13 +1,12 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GetUserListResponseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int = Field(..., description="ID")
     email: str = Field(..., description="Email")
     nickname: str = Field(..., description="Nickname")
-
-    class Config:
-        orm_mode = True
 
 
 class CreateUserRequestSchema(BaseModel):
@@ -18,8 +17,7 @@ class CreateUserRequestSchema(BaseModel):
 
 
 class CreateUserResponseSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     email: str = Field(..., description="Email")
     nickname: str = Field(..., description="Nickname")
-
-    class Config:
-        orm_mode = True

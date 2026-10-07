@@ -13,19 +13,21 @@ class ConfigurationEnum(Enum):
 
 class ConfigurationError(ErrorCode):
     def __init__(self, error: ConfigurationEnum) -> None:
-        self.__value = error.value
-        self.__http_status_code: HTTPStatus = self.__value[0]
-        self.__message = self.__value[1]
+        status_code, message = error.value
+        self._status_code: int = status_code
+        self._message: str = message
 
     def get_status_code(self) -> int:
-        return self.__http_status_code
+        return self._status_code
 
     def get_message(self) -> str:
-        return self.__message
+        return self._message
 
 
 class ConfigurationException(CustomException):
     def __init__(
-        self, error_code: ErrorCode, argument_errors: list[ArgumentError] = None
+        self,
+        error_code: ErrorCode,
+        argument_errors: list[ArgumentError] | None = None,
     ) -> None:
         super().__init__(error_code=error_code, argument_errors=argument_errors)

@@ -1,4 +1,5 @@
 import abc
+from dataclasses import dataclass
 
 
 class ErrorCode(abc.ABC):
@@ -11,20 +12,13 @@ class ErrorCode(abc.ABC):
         raise NotImplementedError
 
 
+@dataclass(frozen=True, slots=True)
 class ArgumentError:
-    def __init__(self, field_name: str, value: str, reason: str) -> None:
-        self.__field_name = field_name
-        self.__value = value
-        self.__reason = reason
+    """One rejected argument, sent to the client as an item of ``detail``."""
 
-    def get_field_name(self) -> str:
-        return self.__field_name
-
-    def get_value(self) -> str:
-        return self.__value
-
-    def get_reason(self) -> str:
-        return self.__reason
+    field_name: str
+    value: str
+    reason: str
 
 
 class CustomException(Exception):
@@ -36,4 +30,6 @@ class CustomException(Exception):
         super().__init__(error_code.get_message())
         self.code: int = error_code.get_status_code()
         self.message: str = error_code.get_message()
-        self.argument_errors: list[ArgumentError] = argument_errors or []
+        self.argument_errors: list[ArgumentError] = (
+            [] if argument_errors is None else list(argument_errors)
+        )

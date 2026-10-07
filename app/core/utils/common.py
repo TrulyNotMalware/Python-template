@@ -11,7 +11,7 @@ class Singleton(type):
 
     def __call__(cls, *args: Any, **kwargs: Any) -> Any:
         if cls not in cls._instances:
-            logger.info(f"Singleton Instance {cls.__name__} Not found. create.")
+            logger.debug("Singleton instance %s not found, creating it", cls.__name__)
             cls._instances[cls] = super().__call__(*args, **kwargs)
-        logger.info(f"Return Singleton instance {cls.__name__}")
+        logger.debug("Returning singleton instance %s", cls.__name__)
         return cls._instances[cls]

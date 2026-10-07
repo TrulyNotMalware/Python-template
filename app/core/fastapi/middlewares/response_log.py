@@ -1,36 +1,44 @@
-from pydantic import BaseModel, Field
-from starlette.datastructures import Headers
+import logging
+
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-
-class ResponseInfo(BaseModel):
-    headers: Headers | None = Field(default=None, title="Response header")
-    body: str = Field(default="", title="Response Body")
-    status_code: int | None = Field(default=None, title="Status code")
-
-    class Config:
-        arbitrary_types_allowed = True
+logger = logging.getLogger(__name__)
 
 
 class ResponseLogMiddleware:
+    """Log method, path, status and size of every HTTP response at DEBUG level.
+
+    Headers and body content never reach the log: they can carry credentials.
+    """
+
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
-            return await self.app(scope, receive, send)
+            await self.app(scope, receive, send)
+            return
 
-        response_info = ResponseInfo()
+        status: int | None = None
+        size = 0
 
-        async def _logging_send(message: Message) -> None:
-            if message.get("type") == "http.response.start":
-                response_info.headers = Headers(raw=message.get("headers"))
-                response_info.status_code = message.get("status")
-            elif message.get("type") == "http.response.body":
-                if body := message.get("body"):
-                    response_info.body += body.decode("utf8")
-
+        async def send_and_count(message: Message) -> None:
+            nonlocal status, size
+            if message["type"] == "http.response.start":
+                status = message["status"]
+            elif message["type"] == "http.response.body":
+                size += len(message.get("body", b""))
             await send(message)
 
-        await self.app(scope, receive, _logging_send)
-        return None
+        try:
+            await self.app(scope, receive, send_and_count)
+        finally:
+            # Also when the application raised: no status means the error
+            # escaped before a response started, and the outer 500 is not seen.
+            logger.debug(
+                "%s %s -> %s (%d bytes)",
+                scope["method"],
+                scope["path"],
+                "unhandled" if status is None else status,
+                size,
+            )
